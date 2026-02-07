@@ -23,7 +23,8 @@ class WallServiceTest {
             canPin = true,
             isPinned = false,
             isFavorite = false,
-            likes = Likes(0, false, true, true)
+            likes = Likes(0, false, true, true),
+            comments = Comment(0, false, false, false, false)
         )
 
         val result = WallService.add(post)
@@ -44,7 +45,8 @@ class WallServiceTest {
             canPin = true,
             isPinned = false,
             isFavorite = false,
-            likes = Likes(0, false, true, true)
+            likes = Likes(0, false, true, true),
+            comments = Comment(0, false, false, false, false)
         )
 
         val addedPost = WallService.add(post)
@@ -74,7 +76,8 @@ class WallServiceTest {
             canPin = true,
             isPinned = false,
             isFavorite = false,
-            likes = Likes(0, false, true, true)
+            likes = Likes(0, false, true, true),
+            comments = Comment(0, false, false, false, false)
         )
 
         val result = WallService.update(nonExistingPost)
