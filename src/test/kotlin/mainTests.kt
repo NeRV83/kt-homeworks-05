@@ -11,6 +11,8 @@ class WallServiceTest {
 
     @Test
     fun testAddPostIdNotZero() {
+        val service = WallService
+
         val post = Post(
             id = 0,
             toID = 1,
@@ -24,15 +26,20 @@ class WallServiceTest {
             isPinned = false,
             isFavorite = false,
             likes = Likes(0, false, true, true),
-            comments = Comment(0, false, false, false, false)
+            comments = emptyArray(), // Исправлено: comments - это Array<Comment>
+            attachments = emptyArray()
         )
 
-        val result = WallService.add(post)
+        val result = service.add(post)
+
         assertNotEquals("ID поста должен быть не равен 0 после добавления", 0, result.id)
+        assertEquals(1, result.id) // Проверяем, что ID стал 1
     }
 
     @Test
     fun testUpdateExistingPostReturnsTrue() {
+        val service = WallService
+
         val post = Post(
             id = 0,
             toID = 1,
@@ -46,23 +53,40 @@ class WallServiceTest {
             isPinned = false,
             isFavorite = false,
             likes = Likes(0, false, true, true),
-            comments = Comment(0, false, false, false, false)
+            comments = emptyArray(),
+            attachments = emptyArray()
         )
 
-        val addedPost = WallService.add(post)
+        val addedPost = service.add(post)
 
         val updatedPost = addedPost.copy(
             text = "Обновленный текст",
             isPinned = true
         )
 
-        val result = WallService.update(updatedPost)
+        val result = service.update(updatedPost)
 
         assertTrue("При обновлении существующего поста должен возвращаться true", result)
+        val postAfterUpdate = service.findById(addedPost.id)
+        assertEquals("Обновленный текст", postAfterUpdate.text)
+        assertTrue(postAfterUpdate.isPinned)
     }
 
     @Test
     fun testUpdateNonExistingPostReturnsFalse() {
+        val service = WallService
+
+        val existingPost = Post(
+            id = 0,
+            toID = 1,
+            fromID = 2,
+            date = 1234567890,
+            text = "Существующий пост",
+            likes = Likes(0, false, true, true),
+            comments = emptyArray(),
+            attachments = emptyArray()
+        )
+        service.add(existingPost)
 
         val nonExistingPost = Post(
             id = 999,
@@ -77,11 +101,11 @@ class WallServiceTest {
             isPinned = false,
             isFavorite = false,
             likes = Likes(0, false, true, true),
-            comments = Comment(0, false, false, false, false)
+            comments = emptyArray(),
+            attachments = emptyArray()
         )
 
-        val result = WallService.update(nonExistingPost)
-
+        val result = service.update(nonExistingPost)
         assertFalse("При обновлении несуществующего поста должен возвращаться false", result)
     }
 
@@ -198,5 +222,70 @@ class WallServiceTest {
         assertEquals(2, result.attachments.size)
         assertEquals("audio", result.attachments[0].type)
         assertEquals("doc", result.attachments[1].type)
+    }
+
+    @Test
+    fun createComment_existingPost() {
+
+        val service = WallService
+        service.clear()
+
+        val post = Post(
+            id = 0,
+            fromID = 1,
+            text = "Тестовый пост",
+            likes = Likes(count = 0)
+        )
+        val addedPost = service.add(post)
+
+        val comment = Comment(
+            fromID = 2,
+            text = "Тестовый комментарий",
+            date = 1767214800
+        )
+
+        val result = service.createComment(addedPost.id, comment)
+
+        assertNotNull(result)
+        assertEquals(1, result.id) // первый комментарий должен иметь id = 1
+        assertEquals(2, result.fromID)
+        assertEquals("Тестовый комментарий", result.text)
+
+        val updatedPost = service.findById(addedPost.id)
+        assertEquals(1, updatedPost.comments.size)
+        assertEquals(result, updatedPost.comments[0])
+    }
+
+    @Test(expected = PostNotFoundException::class)
+    fun createComment_nonExistingPost() {
+
+        val service = WallService
+        service.clear()
+
+        val comment = Comment(
+            fromID = 2,
+            text = "Комментарий к несуществующему посту"
+        )
+
+        service.createComment(999, comment)
+    }
+
+    @Test
+    fun createCommentNonExistingPostTryCatch() {
+
+        val service = WallService
+        service.clear()
+
+        val comment = Comment(
+            fromID = 2,
+            text = "Комментарий к несуществующему посту"
+        )
+
+        try {
+            service.createComment(999, comment)
+            fail("Expected PostNotFoundException was not thrown")
+        } catch (e: PostNotFoundException) {
+            assertTrue(e.message!!.contains("999"))
+        }
     }
 }

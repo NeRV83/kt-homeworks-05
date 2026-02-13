@@ -1,3 +1,5 @@
+class PostNotFoundException(message: String) : RuntimeException(message)
+
 data class Likes(
     val count: Int = 0,
     val userLikes: Boolean = true,
@@ -5,13 +7,51 @@ data class Likes(
     val canPublish: Boolean = true
 )
 
+//data class Comment(
+//    val count: Int = 0,
+//    val canPost: Boolean = false,
+//    val groupsCanPost: Boolean = false,
+//    val canClose: Boolean = false,
+//    val canOpen: Boolean = false
+//)
+
 data class Comment(
-    val count: Int = 0,
-    val canPost: Boolean = false,
-    val groupsCanPost: Boolean = false,
-    val canClose: Boolean = false,
-    val canOpen: Boolean = false
-)
+    val id: Int = 0,
+    val fromID: Int = 0,
+    val date: Long = 1767214800,
+    val text: String = "",
+    val replyToUser: Int = 0,
+    val replyToComment: Int = 0,
+    val attachments: Array<Attachment> = emptyArray()
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as Comment
+
+        if (id != other.id) return false
+        if (fromID != other.fromID) return false
+        if (date != other.date) return false
+        if (replyToUser != other.replyToUser) return false
+        if (replyToComment != other.replyToComment) return false
+        if (text != other.text) return false
+        if (!attachments.contentEquals(other.attachments)) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = id
+        result = 31 * result + fromID
+        result = 31 * result + date.hashCode()
+        result = 31 * result + replyToUser
+        result = 31 * result + replyToComment
+        result = 31 * result + text.hashCode()
+        result = 31 * result + attachments.contentHashCode()
+        return result
+    }
+}
 
 interface Attachment {
     val type: String
@@ -123,7 +163,7 @@ data class Post(
     val isPinned: Boolean = false,
     val isFavorite: Boolean = false,
     val likes: Likes,
-    val comments: Comment? = null,
+    val comments: Array<Comment> = emptyArray(),
     val attachments: Array<Attachment> = emptyArray()
 ) {
     override fun equals(other: Any?): Boolean {
@@ -171,10 +211,25 @@ data class Post(
 
 object WallService {
     private var posts = emptyArray<Post>()
-    private var currentId = 1
+    private var currentPostId = 1
+    private var currentCommentId = 1
+
+    fun createComment(postId: Int, comment: Comment): Comment {
+        val post = findById(postId)
+        val newComment = comment.copy(id = currentCommentId++)
+        val updatedPost = post.copy(
+            comments = post.comments + newComment
+        )
+        val postIndex = posts.indexOfFirst { it.id == postId }
+        posts[postIndex] = updatedPost
+        return newComment
+    }
+
+    fun findById(id: Int): Post =
+        posts.find { it.id == id } ?: throw PostNotFoundException("Post with id $id not found")
 
     fun add(post: Post): Post {
-        val newPost = post.copy(id = currentId++)
+        val newPost = post.copy(id = currentPostId++)
         posts += newPost
         return newPost
     }
@@ -189,9 +244,11 @@ object WallService {
         return false
     }
 
+    //fun removeById(id: Int): Boolean = posts.removeIf { it.id == id } ?: throw PostNotFoundException("Post with id $id not found")
+
     fun clear() {
         posts = emptyArray()
-        currentId = 1
+        currentPostId = 1
     }
 }
 
