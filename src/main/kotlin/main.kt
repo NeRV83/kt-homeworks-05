@@ -1,4 +1,27 @@
 class PostNotFoundException(message: String) : RuntimeException(message)
+class NoteNotFoundException(message: String) : RuntimeException(message)
+class NoteDeletedException(message: String) : RuntimeException(message)
+class CommentNotFoundException(message: String) : RuntimeException(message)
+class CommentDeletedException(message: String) : RuntimeException(message)
+
+data class Notes(
+    val id: Int = 0,
+    val ownerId: Int = 0,
+    val title: String = "",
+    val text: String = "",
+    val date: Long = System.currentTimeMillis(),
+    val comments: Int = 0
+)
+
+data class NoteComment(
+    val id: Int,
+    val userId: Int,
+    val noteId: Int,
+    val ownerId: Int,
+    val date: Long = System.currentTimeMillis(),
+    val message: String,
+    var isDeleted: Boolean = false
+)
 
 data class Likes(
     val count: Int = 0,
@@ -18,7 +41,7 @@ data class Likes(
 data class Comment(
     val id: Int = 0,
     val fromID: Int = 0,
-    val date: Long = 1767214800,
+    val date: Long = System.currentTimeMillis(),
     val text: String = "",
     val replyToUser: Int = 0,
     val replyToComment: Int = 0,
@@ -154,7 +177,7 @@ data class Post(
     val id: Int = 0,
     val toID: Int = 0,
     val fromID: Int = 0,
-    val date: Long = 1767214800,
+    val date: Long = System.currentTimeMillis(),
     val text: String = "",
     val postType: String = "post",
     val canEdit: Boolean = false,
@@ -249,6 +272,172 @@ object WallService {
     fun clear() {
         posts = emptyArray()
         currentPostId = 1
+    }
+}
+
+object NoteService {
+    private var notes = mutableMapOf<Int, Notes>()
+    private var comments = mutableMapOf<Int, NoteComment>()
+    private var nextNoteId = 1
+    private var nextCommentId = 1
+
+    // Generic метод для проверки существования
+    private fun <T> checkExists(id: Int, map: Map<Int, T>, entityName: String): T {
+        return map[id] ?: throw NotFoundException("$entityName with id $id not found")
+    }
+
+    class NotFoundException(message: String) : RuntimeException(message)
+
+    fun add(title: String, text: String): Int {
+        val note = Notes(
+            id = nextNoteId++,
+            title = title,
+            text = text
+        )
+        notes[note.id] = note
+        return note.id
+    }
+
+    fun createComment(noteId: Int, ownerId: Int, message: String, commentId: Int? = null): Int {
+        val note = checkExists(noteId, notes, "Note")
+
+        val comment = NoteComment(
+            id = commentId ?: nextCommentId++,
+            userId = ownerId,
+            noteId = noteId,
+            ownerId = ownerId,
+            message = message,
+            isDeleted = false
+        )
+        comments[comment.id] = comment
+
+        val updatedNote = note.copy(comments = note.comments + 1)
+        notes[noteId] = updatedNote
+
+        return comment.id
+    }
+
+    fun delete(noteId: Int): Boolean {
+        val note = checkExists(noteId, notes, "Note")
+
+        // Помечаем все комментарии заметки как удаленные
+        comments.values
+            .filter { it.noteId == noteId }
+            .forEach { it.isDeleted = true }
+
+        notes.remove(noteId)
+        return true
+    }
+
+    fun deleteComment(commentId: Int, ownerId: Int): Boolean {
+        val comment = comments[commentId]
+            ?: throw CommentNotFoundException("Comment with id $commentId not found")
+
+        if (comment.ownerId != ownerId) {
+            throw IllegalArgumentException("User $ownerId is not the owner of comment $commentId")
+        }
+
+        if (comment.isDeleted) {
+            throw CommentDeletedException("Comment $commentId is already deleted")
+        }
+
+        comment.isDeleted = true
+        return true
+    }
+
+    fun edit(noteId: Int, title: String, text: String): Boolean {
+        val note = checkExists(noteId, notes, "Note")
+
+        val updatedNote = note.copy(
+            title = title,
+            text = text
+        )
+        notes[noteId] = updatedNote
+        return true
+    }
+
+    fun editComment(commentId: Int, ownerId: Int, message: String): Boolean {
+        val comment = comments[commentId]
+            ?: throw CommentNotFoundException("Comment with id $commentId not found")
+
+        if (comment.ownerId != ownerId) {
+            throw IllegalArgumentException("User $ownerId is not the owner of comment $commentId")
+        }
+
+        if (comment.isDeleted) {
+            throw CommentDeletedException("Cannot edit deleted comment $commentId")
+        }
+
+        val updatedComment = comment.copy(message = message)
+        comments[commentId] = updatedComment
+        return true
+    }
+
+    fun getById(noteId: Int, ownerId: Int): Notes {
+        val note = checkExists(noteId, notes, "Note")
+
+        if (note.ownerId != ownerId) {
+            throw IllegalArgumentException("User $ownerId is not the owner of note $noteId")
+        }
+
+        return note
+    }
+
+    fun getComments(noteId: Int, ownerId: Int, sort: Int = 0): Array<NoteComment> {
+        val note = checkExists(noteId, notes, "Note")
+
+        if (note.ownerId != ownerId) {
+            throw IllegalArgumentException("User $ownerId is not the owner of note $noteId")
+        }
+
+        val noteComments = comments.values
+            .filter { it.noteId == noteId && !it.isDeleted }
+            .toList()
+
+        return when (sort) {
+            0 -> noteComments.sortedBy { it.date }.toTypedArray()
+            1 -> noteComments.sortedByDescending { it.date }.toTypedArray()
+            else -> noteComments.toTypedArray()
+        }
+    }
+
+    fun get(ownerId: Int, sort: Int = 0): List<Notes> {
+        val userNotes = notes.values
+            .filter { it.ownerId == ownerId }
+            .toList()
+
+        return when (sort) {
+            0 -> userNotes.sortedBy { it.date }
+            1 -> userNotes.sortedByDescending { it.date }
+            else -> userNotes
+        }
+    }
+
+    fun restoreComment(commentId: Int, ownerId: Int): Boolean {
+        val comment = comments[commentId]
+            ?: throw CommentNotFoundException("Comment with id $commentId not found")
+
+        if (comment.ownerId != ownerId) {
+            throw IllegalArgumentException("User $ownerId is not the owner of comment $commentId")
+        }
+
+        if (!comment.isDeleted) {
+            throw CommentDeletedException("Comment $commentId is not deleted")
+        }
+
+        if (!notes.containsKey(comment.noteId)) {
+            throw NoteDeletedException("Cannot restore comment - note ${comment.noteId} is deleted")
+        }
+
+        comment.isDeleted = false
+        return true
+    }
+
+    fun clear() {
+        notes = mutableMapOf()
+        comments = mutableMapOf()
+        nextNoteId = 1
+        nextCommentId = 1
     }
 }
 
