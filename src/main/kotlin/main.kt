@@ -24,7 +24,7 @@ data class Message(
 
 data class Chat(
     val id: Int,
-    val participantId: Int, // ID собеседника
+    val participantId: Int,
     val messages: MutableList<Message> = mutableListOf()
 )
 
