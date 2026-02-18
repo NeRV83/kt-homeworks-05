@@ -1,8 +1,32 @@
+
+// Исключения
+
+class ChatNotFoundException(message: String) : RuntimeException(message)
+class MessageNotFoundException(message: String) : RuntimeException(message)
+class ChatAlreadyExistsException(message: String) : RuntimeException(message)
 class PostNotFoundException(message: String) : RuntimeException(message)
 class NoteNotFoundException(message: String) : RuntimeException(message)
 class NoteDeletedException(message: String) : RuntimeException(message)
 class CommentNotFoundException(message: String) : RuntimeException(message)
 class CommentDeletedException(message: String) : RuntimeException(message)
+
+// Модели данных
+
+data class Message(
+    val id: Int,
+    val chatId: Int,
+    val senderId: Int,
+    var text: String,
+    val timestamp: Long = System.currentTimeMillis(),
+    var isRead: Boolean = false,
+    var isDeleted: Boolean = false
+)
+
+data class Chat(
+    val id: Int,
+    val participantId: Int, // ID собеседника
+    val messages: MutableList<Message> = mutableListOf()
+)
 
 data class Notes(
     val id: Int = 0,
@@ -232,6 +256,8 @@ data class Post(
     }
 }
 
+// Сервисы
+
 object WallService {
     private var posts = emptyArray<Post>()
     private var currentPostId = 1
@@ -438,6 +464,133 @@ object NoteService {
         comments = mutableMapOf()
         nextNoteId = 1
         nextCommentId = 1
+    }
+}
+
+object ChatService {
+    private var chats = mutableMapOf<Int, Chat>() // key: chatId
+    private var messages = mutableMapOf<Int, Message>() // key: messageId
+    private var nextChatId = 1
+    private var nextMessageId = 1
+    private val currentUserId = 1 // Текущий пользователь системы
+
+    // Вспомогательные extension функции
+    private fun <T> MutableMap<Int, T>.findByParticipant(participantId: Int): Chat? =
+        this.values.firstOrNull { (it as Chat).participantId == participantId } as Chat?
+
+    private fun List<Message>.unreadCount(): Int = this.count { !it.isRead && !it.isDeleted }
+
+    private fun List<Message>.lastNonDeletedMessage(): String =
+        this.filterNot { it.isDeleted }
+            .maxByOrNull { it.timestamp }
+            ?.text
+            ?: "нет сообщений"
+
+    // Получить количество непрочитанных чатов
+    fun getUnreadChatsCount(): Int = chats.values
+        .map { it.messages }
+        .count { messages -> messages.any { !it.isRead && !it.isDeleted } }
+
+    // Получить список чатов
+    fun getChats(): List<Chat> = chats.values.toList()
+
+    // Получить список последних сообщений из чатов
+    fun getLastMessages(): List<String> = chats.values
+        .map { it.messages }
+        .map { messages -> messages.lastNonDeletedMessage() }
+
+    // Получить список сообщений из чата с автоматическим прочтением
+    fun getMessages(participantId: Int, count: Int): List<Message> {
+        val chat = chats.findByParticipant(participantId)
+            ?: throw ChatNotFoundException("Chat with participant $participantId not found")
+
+        val messages = chat.messages
+            .filterNot { it.isDeleted }
+            .sortedByDescending { it.timestamp }
+            .take(count)
+            .onEach { it.isRead = true } // Отмечаем как прочитанные
+
+        return messages
+    }
+
+    // Создать новое сообщение (и чат при необходимости)
+    fun sendMessage(participantId: Int, text: String): Message {
+        val chat = chats.findByParticipant(participantId) ?: run {
+            // Создаем новый чат
+            val newChat = Chat(
+                id = nextChatId++,
+                participantId = participantId
+            )
+            chats[newChat.id] = newChat
+            newChat
+        }
+
+        val message = Message(
+            id = nextMessageId++,
+            chatId = chat.id,
+            senderId = currentUserId,
+            text = text,
+            timestamp = System.currentTimeMillis()
+        )
+
+        messages[message.id] = message
+        chat.messages.add(message)
+        return message
+    }
+
+    // Удалить сообщение (мягкое удаление)
+    fun deleteMessage(messageId: Int): Boolean {
+        val message = messages[messageId]
+            ?: throw MessageNotFoundException("Message with id $messageId not found")
+
+        message.isDeleted = true
+        return true
+    }
+
+    // Редактировать сообщение
+    fun editMessage(messageId: Int, newText: String): Boolean {
+        val message = messages[messageId]
+            ?: throw MessageNotFoundException("Message with id $messageId not found")
+
+        if (message.isDeleted) {
+            throw MessageNotFoundException("Cannot edit deleted message")
+        }
+
+        message.text = newText
+        return true
+    }
+
+    // Удалить чат полностью
+    fun deleteChat(participantId: Int): Boolean {
+        val chat = chats.findByParticipant(participantId)
+            ?: throw ChatNotFoundException("Chat with participant $participantId not found")
+
+        // Удаляем все сообщения чата
+        messages.values
+            .filter { it.chatId == chat.id }
+            .forEach { messages.remove(it.id) }
+
+        chats.remove(chat.id)
+        return true
+    }
+
+    // Проверить существование чата
+    fun hasChat(participantId: Int): Boolean = chats.findByParticipant(participantId) != null
+
+    // Получить непрочитанные сообщения из конкретного чата
+    fun getUnreadMessages(participantId: Int): List<Message> {
+        val chat = chats.findByParticipant(participantId)
+            ?: throw ChatNotFoundException("Chat with participant $participantId not found")
+
+        return chat.messages
+            .filter { !it.isRead && !it.isDeleted }
+    }
+
+    fun clear() {
+        chats.clear()
+        messages.clear()
+        nextChatId = 1
+        nextMessageId = 1
     }
 }
 
