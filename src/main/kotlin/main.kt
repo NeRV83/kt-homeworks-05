@@ -505,10 +505,12 @@ object ChatService {
             ?: throw ChatNotFoundException("Chat with participant $participantId not found")
 
         val messages = chat.messages
+            .asSequence()
             .filterNot { it.isDeleted }
             .sortedByDescending { it.timestamp }
             .take(count)
             .onEach { it.isRead = true } // Отмечаем как прочитанные
+            .toList()
 
         return messages
     }
